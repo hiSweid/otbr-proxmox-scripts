@@ -2,6 +2,9 @@
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
+export CMAKE_BUILD_PARALLEL_LEVEL=1
+export MAKEFLAGS="-j1"
+export npm_config_jobs=1
 
 apt-get update
 apt-get install -y \
@@ -15,7 +18,12 @@ apt-get install -y \
   avahi-daemon \
   lsb-release \
   nodejs \
-  npm
+  npm \
+  build-essential \
+  cmake \
+  ninja-build \
+  pkg-config \
+  python3
 
 command -v lsb_release >/dev/null 2>&1 || { echo "lsb_release fehlt"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm fehlt"; exit 1; }
@@ -60,6 +68,9 @@ cat >/opt/otbr/update.sh <<'EOF'
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
+export CMAKE_BUILD_PARALLEL_LEVEL=1
+export MAKEFLAGS="-j1"
+export npm_config_jobs=1
 
 apt-get update
 apt-get install -y \
@@ -73,7 +84,12 @@ apt-get install -y \
   avahi-daemon \
   lsb-release \
   nodejs \
-  npm
+  npm \
+  build-essential \
+  cmake \
+  ninja-build \
+  pkg-config \
+  python3
 
 command -v lsb_release >/dev/null 2>&1 || { echo "lsb_release fehlt"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm fehlt"; exit 1; }
