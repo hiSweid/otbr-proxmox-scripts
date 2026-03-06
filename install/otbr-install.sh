@@ -13,7 +13,12 @@ apt-get install -y \
   wget \
   dbus \
   avahi-daemon \
-  lsb-release
+  lsb-release \
+  nodejs \
+  npm
+
+command -v lsb_release >/dev/null 2>&1 || { echo "lsb_release fehlt"; exit 1; }
+command -v npm >/dev/null 2>&1 || { echo "npm fehlt"; exit 1; }
 
 rm -rf /opt/otbr
 git clone --depth=1 https://github.com/openthread/ot-br-posix /opt/otbr
@@ -57,7 +62,21 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update
-apt-get install -y ca-certificates curl git sudo nano wget dbus avahi-daemon lsb-release
+apt-get install -y \
+  ca-certificates \
+  curl \
+  git \
+  sudo \
+  nano \
+  wget \
+  dbus \
+  avahi-daemon \
+  lsb-release \
+  nodejs \
+  npm
+
+command -v lsb_release >/dev/null 2>&1 || { echo "lsb_release fehlt"; exit 1; }
+command -v npm >/dev/null 2>&1 || { echo "npm fehlt"; exit 1; }
 
 if [[ ! -d /opt/otbr/.git ]]; then
   rm -rf /opt/otbr
