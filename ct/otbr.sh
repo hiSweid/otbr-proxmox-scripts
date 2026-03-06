@@ -6,7 +6,7 @@ source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxV
 # License: MIT
 # Source: https://openthread.io/
 
-APP="otbr"
+APP="OTBR"
 var_tags="iot;smarthome;thread"
 var_cpu="2"
 var_ram="1024"
@@ -17,54 +17,68 @@ var_unprivileged="0"
 HN="otbr"
 
 header_info "$APP"
-
-RADIO_URL=""
-CHOICE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR Setup" --menu "Verbindungsart für den Thread-Stick:" 12 58 2 \
-  "1" "Netzwerk (TCP, z.B. SLZB-06)" \
-  "2" "USB (z.B. SkyConnect)" 3>&1 1>&2 2>&3)
-
-if [ "$CHOICE" == "1" ]; then
-  NETWORK_IP=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "Netzwerk Stick" --inputbox "IP & Port (Format IP:PORT):" 10 50 "192.168.111.4:6638" 3>&1 1>&2 2>&3)
-  RADIO_URL="spinel+hdlc+socket://${NETWORK_IP}"
-else
-  USB_PATH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "USB Stick" --inputbox "Pfad zum USB-Gerät:" 10 50 "/dev/ttyACM0" 3>&1 1>&2 2>&3)
-  RADIO_URL="spinel+hdlc+uart://${USB_PATH}?baudrate=460800"
-fi
-
 variables
 color
 catch_errors
 
 function update_script() {
   header_info
+  check_container_storage
+  check_container_resources
   if [[ ! -f /opt/otbr/update.sh ]]; then
     msg_error "Keine OTBR Installation gefunden!"
     exit
   fi
-  msg_info "Update OTBR"
-  pct exec "$CTID" -- bash -c "/opt/otbr/update.sh"
-  msg_ok "OTBR aktualisiert"
+  msg_info "Updating $APP"
+  pct exec "$CTID" -- bash /opt/otbr/update.sh
+  msg_ok "Updated $APP"
   exit
 }
+
+RADIO_URL=""
+USB_PATH="/dev/ttyACM0"
+
+CHOICE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR Setup" --menu "Thread Radio Verbindung:" 12 60 2 \
+  "1" "Netzwerk (TCP, z.B. SLZB-06)" \
+  "2" "USB (z.B. SkyConnect / Sonoff)" 3>&1 1>&2 2>&3)
+
+if [[ "$CHOICE" == "1" ]]; then
+  NETWORK_IP=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR Netzwerk-Radio" --inputbox "IP:PORT" 10 50 "192.168.111.4:6638" 3>&1 1>&2 2>&3)
+  RADIO_URL="spinel+hdlc+socket://${NETWORK_IP}"
+else
+  USB_PATH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR USB-Radio" --inputbox "USB Pfad" 10 50 "/dev/ttyACM0" 3>&1 1>&2 2>&3)
+  RADIO_URL="spinel+hdlc+uart://${USB_PATH}?baudrate=460800"
+fi
 
 start
 build_container
 description
 
-msg_info "Übertrage OTBR Konfiguration"
+msg_info "Transferring OTBR configuration"
 echo "$RADIO_URL" >/tmp/radio_url.txt
 pct push "$CTID" /tmp/radio_url.txt /tmp/radio_url.txt
 rm -f /tmp/radio_url.txt
-msg_ok "Konfiguration übertragen"
+msg_ok "Transferred OTBR configuration"
 
-msg_info "Installiere OTBR im Container"
-pct exec "$CTID" -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/hiSweid/otbr-proxmox-scripts/main/install/otbr-install.sh)"
-msg_ok "OTBR installiert"
+msg_info "Fetching install script"
+TMP_INSTALL=$(mktemp)
+curl -fsSL https://raw.githubusercontent.com/hiSweid/otbr-proxmox-scripts/main/install/otbr-install.sh -o "$TMP_INSTALL"
+pct push "$CTID" "$TMP_INSTALL" /root/otbr-install.sh
+rm -f "$TMP_INSTALL"
+pct exec "$CTID" -- chmod +x /root/otbr-install.sh
+msg_ok "Fetched install script"
 
-IP=$(pct exec "$CTID" -- hostname -I | awk '{print $1}')
-msg_ok "Installation erfolgreich"
-echo -e "${INFO}${BGN}  OTBR Web-UI: http://${IP} ${CL}"
+msg_info "Installing OTBR"
+pct exec "$CTID" -- bash /root/otbr-install.sh
+msg_ok "Installed OTBR"
 
-if [ "$CHOICE" == "2" ]; then
-  echo -e "${INFO}${BGN}  USB-Nutzer: Bitte USB-Gerät zusätzlich per LXC mounten. ${CL}"
+IP=$(pct exec "$CTID" -- bash -lc "hostname -I | awk '{print \$1}'")
+
+msg_ok "Completed Successfully"
+echo -e "${INFO}${YW} OTBR hostname:${CL} ${BGN}otbr${CL}"
+echo -e "${INFO}${YW} Container IP:${CL} ${BGN}${IP}${CL}"
+
+if [[ "$CHOICE" == "2" ]]; then
+  echo -e "${INFO}${YW} USB passthrough reminder:${CL}"
+  echo -e "${TAB}${BGN}lxc.mount.entry: ${USB_PATH} dev/ttyACM0 none bind,optional,create=file${CL}"
 fi
