@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 # Copyright (c) 2021-2026 community-scripts ORG
-# Author: Henryk
-# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
+# Author: hiSweid
+# License: MIT
 # Source: https://openthread.io/ | Github: https://github.com/openthread/otbr
 
 source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
@@ -18,7 +18,8 @@ $STD apt-get install -y sudo git curl wget build-essential pkg-config avahi-daem
 msg_ok "Installed Dependencies"
 
 msg_info "Cloning OTBR Repository"
-$STD git clone https://github.com/openthread/otbr.git /opt/otbr
+# Optimierung: --depth 1 lädt nur die neueste Version, das spart Zeit und Speicher
+$STD git clone --depth 1 https://github.com/openthread/otbr.git /opt/otbr
 msg_ok "Cloned OTBR Repository"
 
 msg_info "Bootstrapping OTBR (Patience)"
@@ -73,6 +74,11 @@ echo "Update abgeschlossen!"
 EOF
 chmod +x /opt/otbr/update.sh
 msg_ok "Created Update Script"
+
+msg_info "Cleaning up"
+$STD apt-get autoremove -y
+$STD apt-get clean
+msg_ok "Cleaned up"
 
 motd_ssh
 customize
