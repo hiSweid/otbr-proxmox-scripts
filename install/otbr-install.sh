@@ -10,8 +10,10 @@ apt-get install -y \
   git \
   sudo \
   nano \
+  wget \
   dbus \
-  avahi-daemon
+  avahi-daemon \
+  lsb-release
 
 rm -rf /opt/otbr
 git clone --depth=1 https://github.com/openthread/ot-br-posix /opt/otbr
@@ -53,6 +55,9 @@ cat >/opt/otbr/update.sh <<'EOF'
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+apt-get install -y ca-certificates curl git sudo nano wget dbus avahi-daemon lsb-release
 
 if [[ ! -d /opt/otbr/.git ]]; then
   rm -rf /opt/otbr
