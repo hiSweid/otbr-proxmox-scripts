@@ -26,8 +26,7 @@ apt-get install -y \
   ninja-build \
   pkg-config \
   python3 \
-  socat \
-  nginx
+  socat
 
 command -v lsb_release >/dev/null 2>&1 || { echo "lsb_release fehlt"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm fehlt"; exit 1; }
@@ -39,7 +38,6 @@ cd /opt/otbr
 WEB_GUI=1 ./script/bootstrap
 INFRA_IF_NAME=eth0 WEB_GUI=1 NAT64=1 DNS64=1 ./script/setup
 
-RADIO_URL=""
 mkdir -p /etc/systemd/system/otbr-agent.service.d
 
 if [[ "${MODE}" == "network" ]]; then
@@ -92,25 +90,25 @@ systemctl restart otbr-web || systemctl start otbr-web
 
 IP="$(hostname -I | awk '{print $1}')"
 
-rm -f /etc/nginx/sites-enabled/default
-cat >/etc/nginx/sites-available/otbr <<EOF
-server {
-    listen ${IP}:80 default_server;
-    server_name _;
-    location / {
-        proxy_pass http://127.0.0.1:80;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
+cat >/etc/systemd/system/otbr-web-publish.service <<EOF
+[Unit]
+Description=Publish OTBR Web on container IP
+After=network-online.target otbr-web.service
+Wants=network-online.target
+Requires=otbr-web.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/socat TCP-LISTEN:80,bind=${IP},fork,reuseaddr TCP:127.0.0.1:80
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
 EOF
 
-ln -sf /etc/nginx/sites-available/otbr /etc/nginx/sites-enabled/otbr
-systemctl enable --now nginx
-systemctl restart nginx
+systemctl daemon-reload
+systemctl enable --now otbr-web-publish
 
 cat >/etc/default/otbr-helper <<EOF
 MODE=${MODE}
@@ -148,8 +146,7 @@ apt-get install -y \
   ninja-build \
   pkg-config \
   python3 \
-  socat \
-  nginx
+  socat
 
 if [[ ! -d /opt/otbr/.git ]]; then
   rm -rf /opt/otbr
@@ -185,6 +182,13 @@ EOF2
   systemctl daemon-reload
   systemctl enable --now otbr-radio-bridge
 
+  for i in $(seq 1 30); do
+    [[ -e /dev/ttyOTBR ]] && break
+    sleep 1
+  done
+
+  [[ -e /dev/ttyOTBR ]] || { echo "/dev/ttyOTBR wurde nicht erstellt"; exit 1; }
+
   RADIO_URL="spinel+hdlc+uart:///dev/ttyOTBR?uart-baudrate=460800&uart-init-deassert"
 
   cat >/etc/systemd/system/otbr-agent.service.d/override.conf <<EOF2
@@ -206,24 +210,26 @@ systemctl restart otbr-web
 
 IP="$(hostname -I | awk '{print $1}')"
 
-rm -f /etc/nginx/sites-enabled/default
-cat >/etc/nginx/sites-available/otbr <<EOF2
-server {
-    listen ${IP}:80 default_server;
-    server_name _;
-    location / {
-        proxy_pass http://127.0.0.1:80;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
+cat >/etc/systemd/system/otbr-web-publish.service <<EOF2
+[Unit]
+Description=Publish OTBR Web on container IP
+After=network-online.target otbr-web.service
+Wants=network-online.target
+Requires=otbr-web.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/socat TCP-LISTEN:80,bind=${IP},fork,reuseaddr TCP:127.0.0.1:80
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
 EOF2
 
-ln -sf /etc/nginx/sites-available/otbr /etc/nginx/sites-enabled/otbr
-systemctl restart nginx
+systemctl daemon-reload
+systemctl enable --now otbr-web-publish
+systemctl restart otbr-web-publish
 EOF
 
 chmod +x /opt/otbr/update.sh
