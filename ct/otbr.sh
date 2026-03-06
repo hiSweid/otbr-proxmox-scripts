@@ -6,9 +6,8 @@ source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/m
 # Source: https://openthread.io/
 
 # APP Info
-APP="OTBR"
+APP="otbr"
 var_tags="iot;smarthome;thread"
-var_hostname="otbr"
 var_cpu="2"
 var_ram="1024"
 var_disk="4"
@@ -16,10 +15,15 @@ var_os="debian"
 var_version="13"
 var_unprivileged="0"
 
-# GITHUB INFO
+# ERZWINGE CONTAINERNAMEN (HOSTNAME)
+HN="otbr"
+
+# ERZWINGE PFADE
 GITHUB_USER="hiSweid"
 GITHUB_REPO="otbr-proxmox-scripts"
 GITHUB_BRANCH="main"
+export FUNCTIONS_FILE_PATH="https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/install.func"
+export INSTALL_SCRIPT="https://raw.githubusercontent.com/hiSweid/otbr-proxmox-scripts/main/install/otbr-install.sh"
 
 header_info "$APP"
 
@@ -59,7 +63,7 @@ build_container
 # Radio URL an den LXC übergeben
 echo "$RADIO_URL" > /etc/pve/lxc/${CTID}-radio.tmp
 pct push $CTID /etc/pve/lxc/${CTID}-radio.tmp /tmp/radio_url.txt
-rm /etc/pve/lxc/${CTID}-radio.tmp
+rm -f /etc/pve/lxc/${CTID}-radio.tmp
 
 description
 
