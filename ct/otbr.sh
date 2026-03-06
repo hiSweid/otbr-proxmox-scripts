@@ -10,10 +10,11 @@ APP="otbr"
 var_tags="iot;smarthome;thread"
 var_cpu="2"
 var_ram="1024"
-var_disk="4"
+var_disk="6"
 var_os="debian"
 var_version="12"
 var_unprivileged="0"
+var_hostname="otbr"
 HN="otbr"
 
 header_info "$APP"
@@ -60,8 +61,16 @@ pct push "$CTID" /tmp/radio_url.txt /tmp/radio_url.txt
 rm -f /tmp/radio_url.txt
 msg_ok "Konfiguration übertragen"
 
+msg_info "Install-Skript holen"
+TMP_INSTALL=$(mktemp)
+curl -fsSL https://raw.githubusercontent.com/hiSweid/otbr-proxmox-scripts/main/install/otbr-install.sh -o "$TMP_INSTALL"
+pct push "$CTID" "$TMP_INSTALL" /root/otbr-install.sh
+rm -f "$TMP_INSTALL"
+pct exec "$CTID" -- chmod +x /root/otbr-install.sh
+msg_ok "Install-Skript übertragen"
+
 msg_info "Installiere OTBR im Container"
-pct exec "$CTID" -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/hiSweid/otbr-proxmox-scripts/main/install/otbr-install.sh)"
+pct exec "$CTID" -- bash /root/otbr-install.sh
 msg_ok "OTBR installiert"
 
 IP=$(pct exec "$CTID" -- bash -lc "hostname -I | awk '{print \$1}'")
@@ -70,7 +79,4 @@ msg_ok "Installation erfolgreich"
 echo -e "${INFO}${YW} OTBR Hostname:${CL} ${BGN}otbr${CL}"
 echo -e "${INFO}${YW} Container IP:${CL} ${BGN}${IP}${CL}"
 
-if [[ "$CHOICE" == "2" ]]; then
-  echo -e "${INFO}${YW} USB passthrough:${CL}"
-  echo -e "${TAB}${BGN}lxc.mount.entry: ${USB_PATH} dev/ttyACM0 none bind,optional,create=file${CL}"
-fi
+if [[ "$CHOICE"
