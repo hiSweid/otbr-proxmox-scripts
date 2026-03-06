@@ -1,63 +1,85 @@
 #!/usr/bin/env bash
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
 
-set -e
+# Copyright (c) 2021-2026 community-scripts ORG
+# Author: hiSweid
+# License: MIT
+# Source: https://openthread.io/
 
-apt-get update
-apt-get install -y \
-  sudo \
-  git \
-  curl \
-  wget \
-  build-essential \
-  pkg-config \
-  avahi-daemon \
-  dbus \
-  iproute2 \
-  python3 \
-  python3-pip \
-  python3-venv
+APP="OTBR"
+var_tags="iot;smarthome;thread"
+var_cpu="2"
+var_ram="1024"
+var_disk="4"
+var_os="debian"
+var_version="12"
+var_unprivileged="0"
+var_hostname="otbr"
+HN="otbr"
 
-git clone --depth 1 https://github.com/openthread/otbr.git /opt/otbr
-cd /opt/otbr
+header_info "$APP"
+variables
+color
+catch_errors
 
-export INFRA_IF_NAME=eth0
-export WEB_GUI=1
-export NAT64=1
-export DNS64=1
-export PIP_BREAK_SYSTEM_PACKAGES=1
+function update_script() {
+  header_info
+  check_container_storage
+  check_container_resources
+  if [[ ! -f /opt/otbr/update.sh ]]; then
+    msg_error "No ${APP} Installation Found!"
+    exit
+  fi
+  msg_info "Updating $APP"
+  pct exec "$CTID" -- bash /opt/otbr/update.sh
+  msg_ok "Updated $APP"
+  exit
+}
 
-./script/bootstrap
-./script/setup
+RADIO_URL=""
+USB_PATH="/dev/ttyACM0"
 
-USER_RADIO_URL=$(cat /tmp/radio_url.txt)
+CHOICE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR Setup" --menu "Thread Radio Verbindung:" 12 60 2 \
+  "1" "Netzwerk (TCP, z.B. SLZB-06)" \
+  "2" "USB (z.B. SkyConnect / Sonoff)" 3>&1 1>&2 2>&3)
 
-cat <<EOF >/etc/default/otbr-agent
-OTBR_AGENT_OPTS="-I wpan0 -B eth0 ${USER_RADIO_URL}"
-EOF
+if [[ "$CHOICE" == "1" ]]; then
+  NETWORK_IP=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR Netzwerk-Radio" --inputbox "IP:PORT" 10 50 "192.168.111.4:6638" 3>&1 1>&2 2>&3)
+  RADIO_URL="spinel+hdlc+socket://${NETWORK_IP}"
+else
+  USB_PATH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR USB-Radio" --inputbox "USB Pfad" 10 50 "/dev/ttyACM0" 3>&1 1>&2 2>&3)
+  RADIO_URL="spinel+hdlc+uart://${USB_PATH}?baudrate=460800"
+fi
+
+start
+build_container
+description
+
+msg_info "Transferring OTBR configuration"
+echo "$RADIO_URL" >/tmp/radio_url.txt
+pct push "$CTID" /tmp/radio_url.txt /tmp/radio_url.txt
 rm -f /tmp/radio_url.txt
+msg_ok "Transferred OTBR configuration"
 
-systemctl daemon-reload
-systemctl enable --now dbus
-systemctl enable --now avahi-daemon
-systemctl enable --now otbr-agent
-systemctl enable --now otbr-web
+msg_info "Fetching install script"
+TMP_INSTALL=$(mktemp)
+curl -fsSL https://raw.githubusercontent.com/hiSweid/otbr-proxmox-scripts/main/install/otbr-install.sh -o "$TMP_INSTALL"
+pct push "$CTID" "$TMP_INSTALL" /root/otbr-install.sh
+rm -f "$TMP_INSTALL"
+pct exec "$CTID" -- chmod +x /root/otbr-install.sh
+msg_ok "Fetched install script"
 
-cat <<'EOF' >/opt/otbr/update.sh
-#!/usr/bin/env bash
-set -e
-systemctl stop otbr-agent otbr-web || true
-cd /opt/otbr
-git pull
-export INFRA_IF_NAME=eth0
-export WEB_GUI=1
-export NAT64=1
-export DNS64=1
-export PIP_BREAK_SYSTEM_PACKAGES=1
-./script/bootstrap
-./script/setup
-systemctl start otbr-agent otbr-web
-EOF
-chmod +x /opt/otbr/update.sh
+msg_info "Installing OTBR"
+pct exec "$CTID" -- bash /root/otbr-install.sh
+msg_ok "Installed OTBR"
 
-apt-get autoremove -y
-apt-get clean
+IP=$(pct exec "$CTID" -- bash -lc "hostname -I | awk '{print \$1}'")
+
+msg_ok "Completed Successfully"
+echo -e "${INFO}${YW} OTBR container hostname:${CL} ${BGN}otbr${CL}"
+echo -e "${INFO}${YW} Container IP:${CL} ${BGN}${IP}${CL}"
+
+if [[ "$CHOICE" == "2" ]]; then
+  echo -e "${INFO}${YW} USB passthrough reminder:${CL}"
+  echo -e "${TAB}${BGN}lxc.mount.entry: ${USB_PATH} dev/ttyACM0 none bind,optional,create=file${CL}"
+fi
