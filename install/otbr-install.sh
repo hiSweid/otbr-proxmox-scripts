@@ -1,85 +1,69 @@
 #!/usr/bin/env bash
-
+source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
 # Copyright (c) 2021-2026 community-scripts ORG
 # Author: hiSweid
 # License: MIT
-# Source: https://openthread.io/ | Github: https://github.com/openthread/otbr
+# Source: https://openthread.io/
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+# APP Info
+APP="OTBR"
+var_tags="iot;smarthome;thread"
+var_hostname="otbr"
+var_cpu="2"
+var_ram="1024"
+var_disk="4"
+var_os="debian"
+var_version="13"
+var_unprivileged="0"
+
+# GITHUB INFO
+GITHUB_USER="hiSweid"
+GITHUB_REPO="otbr-proxmox-scripts"
+GITHUB_BRANCH="main"
+
+header_info "$APP"
+
+# --- OTBR STICK MENÜ ---
+RADIO_URL=""
+CHOICE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR Setup" --menu "Verbindungsart für den Thread-Stick:" 12 58 2 \
+  "1" "Netzwerk (TCP, z.B. SLZB-06)" \
+  "2" "USB (z.B. SkyConnect)" 3>&1 1>&2 2>&3)
+
+if [ "$CHOICE" == "1" ]; then
+  NETWORK_IP=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "Netzwerk Stick" --inputbox "IP & Port (Format IP:PORT):" 10 50 "192.168.111.4:6638" 3>&1 1>&2 2>&3)
+  RADIO_URL="spinel+hdlc+socket://${NETWORK_IP}"
+else
+  USB_PATH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "USB Stick" --inputbox "Pfad zum USB-Gerät:" 10 50 "/dev/ttyACM0" 3>&1 1>&2 2>&3)
+  RADIO_URL="spinel+hdlc+uart://${USB_PATH}?baudrate=460800"
+fi
+# ------------------------
+
+variables
 color
-verb_ip6
 catch_errors
-setting_up_container
-network_check
-update_os
 
-msg_info "Installing Dependencies"
-$STD apt-get install -y sudo git curl wget build-essential pkg-config avahi-daemon dbus iproute2 python3 python3-pip python3-venv
-msg_ok "Installed Dependencies"
+function update_script() {
+    header_info
+    check_container_storage
+    check_container_resources
+    if [[ ! -f /opt/otbr/update.sh ]]; then msg_error "Keine OTBR Installation gefunden!"; exit; fi
+    msg_info "Update OTBR"
+    pct exec "$CTID" -- bash -c "/opt/otbr/update.sh"
+    msg_ok "OTBR aktualisiert"
+    exit
+}
 
-msg_info "Cloning OTBR Repository"
-# Optimierung: --depth 1 lädt nur die neueste Version, das spart Zeit und Speicher
-$STD git clone --depth 1 https://github.com/openthread/otbr.git /opt/otbr
-msg_ok "Cloned OTBR Repository"
+start
+build_container
 
-msg_info "Bootstrapping OTBR (Patience)"
-cd /opt/otbr
-export INFRA_IF_NAME=eth0
-export WEB_GUI=1
-export NAT64=1
-export DNS64=1
-export PIP_BREAK_SYSTEM_PACKAGES=1
-$STD ./script/bootstrap
-msg_ok "Bootstrapped OTBR"
+# Radio URL an den LXC übergeben
+echo "$RADIO_URL" > /etc/pve/lxc/${CTID}-radio.tmp
+pct push $CTID /etc/pve/lxc/${CTID}-radio.tmp /tmp/radio_url.txt
+rm /etc/pve/lxc/${CTID}-radio.tmp
 
-msg_info "Setting up OTBR (Patience)"
-$STD ./script/setup
-msg_ok "Set up OTBR"
+description
 
-msg_info "Configuring OTBR Agent"
-# Lese die vom Frontend übergebene URL aus
-USER_RADIO_URL=$(cat /tmp/radio_url.txt)
-
-cat <<EOF >/etc/default/otbr-agent
-# Default settings for otbr-agent
-OTBR_AGENT_OPTS="-I wpan0 -B eth0 ${USER_RADIO_URL}"
-EOF
-rm -f /tmp/radio_url.txt
-msg_ok "Configured OTBR Agent with: $USER_RADIO_URL"
-
-msg_info "Enabling Services"
-systemctl enable -q --now dbus avahi-daemon
-systemctl enable -q --now otbr-agent
-systemctl enable -q --now otbr-web
-msg_ok "Enabled Services"
-
-msg_info "Creating Update Script"
-cat <<'EOF' >/opt/otbr/update.sh
-#!/usr/bin/env bash
-echo "Stoppe OTBR Services..."
-systemctl stop otbr-agent otbr-web
-
-echo "Lade Updates herunter..."
-cd /opt/otbr
-git pull
-
-echo "Kompiliere OTBR neu (Das kann dauern)..."
-export INFRA_IF_NAME=eth0 WEB_GUI=1 NAT64=1 DNS64=1 PIP_BREAK_SYSTEM_PACKAGES=1
-./script/bootstrap >/dev/null 2>&1
-./script/setup >/dev/null 2>&1
-
-echo "Starte Services..."
-systemctl start otbr-agent otbr-web
-echo "Update abgeschlossen!"
-EOF
-chmod +x /opt/otbr/update.sh
-msg_ok "Created Update Script"
-
-msg_info "Cleaning up"
-$STD apt-get autoremove -y
-$STD apt-get clean
-msg_ok "Cleaned up"
-
-motd_ssh
-customize
-cleanup_lxc
+msg_ok "Installation erfolgreich\n"
+if [ "$CHOICE" == "2" ]; then
+  echo -e "${INFO}${BGN}  USB-Nutzer: Bitte lxc.mount.entry in die Config eintragen! ${CL}"
+fi
