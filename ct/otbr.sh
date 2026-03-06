@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
 # Copyright (c) 2021-2026 community-scripts ORG
-# Author: Henryk
-# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
+# Author: hiSweid
+# License: MIT
 # Source: https://openthread.io/
 
 # APP Info
-APP="OpenThread Border Router"
+APP="otbr"
 var_tags="iot;smarthome;thread"
+var_hostname="otbr"
 var_cpu="2"
 var_ram="1024"
 var_disk="4"
@@ -15,9 +16,9 @@ var_os="debian"
 var_version="12"
 var_unprivileged="0"
 
-# GITHUB INFO - Hier steht nun dein Name!
+# GITHUB INFO
 GITHUB_USER="hiSweid"
-GITHUB_REPO="proxmox-scripts"
+GITHUB_REPO="otbr-proxmox-scripts"
 GITHUB_BRANCH="main"
 
 header_info "$APP"
