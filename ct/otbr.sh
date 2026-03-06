@@ -6,7 +6,7 @@ source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxV
 # License: MIT
 # Source: https://openthread.io/
 
-APP="OTBR"
+APP="otbr"
 var_tags="iot;smarthome;thread"
 var_cpu="2"
 var_ram="1024"
@@ -29,9 +29,9 @@ function update_script() {
     msg_error "Keine OTBR Installation gefunden!"
     exit
   fi
-  msg_info "Updating $APP"
+  msg_info "Update OTBR"
   pct exec "$CTID" -- bash /opt/otbr/update.sh
-  msg_ok "Updated $APP"
+  msg_ok "OTBR aktualisiert"
   exit
 }
 
@@ -54,31 +54,23 @@ start
 build_container
 description
 
-msg_info "Transferring OTBR configuration"
+msg_info "Konfiguration übertragen"
 echo "$RADIO_URL" >/tmp/radio_url.txt
 pct push "$CTID" /tmp/radio_url.txt /tmp/radio_url.txt
 rm -f /tmp/radio_url.txt
-msg_ok "Transferred OTBR configuration"
+msg_ok "Konfiguration übertragen"
 
-msg_info "Fetching install script"
-TMP_INSTALL=$(mktemp)
-curl -fsSL https://raw.githubusercontent.com/hiSweid/otbr-proxmox-scripts/main/install/otbr-install.sh -o "$TMP_INSTALL"
-pct push "$CTID" "$TMP_INSTALL" /root/otbr-install.sh
-rm -f "$TMP_INSTALL"
-pct exec "$CTID" -- chmod +x /root/otbr-install.sh
-msg_ok "Fetched install script"
-
-msg_info "Installing OTBR"
-pct exec "$CTID" -- bash /root/otbr-install.sh
-msg_ok "Installed OTBR"
+msg_info "Installiere OTBR im Container"
+pct exec "$CTID" -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/hiSweid/otbr-proxmox-scripts/main/install/otbr-install.sh)"
+msg_ok "OTBR installiert"
 
 IP=$(pct exec "$CTID" -- bash -lc "hostname -I | awk '{print \$1}'")
 
-msg_ok "Completed Successfully"
-echo -e "${INFO}${YW} OTBR hostname:${CL} ${BGN}otbr${CL}"
+msg_ok "Installation erfolgreich"
+echo -e "${INFO}${YW} OTBR Hostname:${CL} ${BGN}otbr${CL}"
 echo -e "${INFO}${YW} Container IP:${CL} ${BGN}${IP}${CL}"
 
 if [[ "$CHOICE" == "2" ]]; then
-  echo -e "${INFO}${YW} USB passthrough reminder:${CL}"
+  echo -e "${INFO}${YW} USB passthrough:${CL}"
   echo -e "${TAB}${BGN}lxc.mount.entry: ${USB_PATH} dev/ttyACM0 none bind,optional,create=file${CL}"
 fi
