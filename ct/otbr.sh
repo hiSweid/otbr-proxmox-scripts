@@ -9,8 +9,8 @@ source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxV
 APP="otbr"
 var_tags="iot;smarthome;thread"
 var_cpu="2"
-var_ram="1024"
-var_disk="6"
+var_ram="4096"
+var_disk="8"
 var_os="debian"
 var_version="12"
 var_unprivileged="0"
@@ -79,4 +79,7 @@ msg_ok "Installation erfolgreich"
 echo -e "${INFO}${YW} OTBR Hostname:${CL} ${BGN}otbr${CL}"
 echo -e "${INFO}${YW} Container IP:${CL} ${BGN}${IP}${CL}"
 
-if [[ "$CHOICE"
+if [[ "$CHOICE" == "2" ]]; then
+  echo -e "${INFO}${YW} USB passthrough:${CL}"
+  echo -e "${TAB}${BGN}lxc.mount.entry: ${USB_PATH} dev/ttyACM0 none bind,optional,create=file${CL}"
+fi
