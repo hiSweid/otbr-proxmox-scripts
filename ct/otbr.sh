@@ -6,14 +6,14 @@ source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/m
 # Source: https://openthread.io/
 
 # APP Info
-APP="otbr"
+APP="OTBR"
 var_tags="iot;smarthome;thread"
 var_hostname="otbr"
 var_cpu="2"
 var_ram="1024"
 var_disk="4"
 var_os="debian"
-var_version="12"
+var_version="13"
 var_unprivileged="0"
 
 # GITHUB INFO
@@ -23,20 +23,20 @@ GITHUB_BRANCH="main"
 
 header_info "$APP"
 
-# --- EIGENES MENÜ FÜR DEN FUNK-STICK ---
+# --- OTBR STICK MENÜ ---
 RADIO_URL=""
-CHOICE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "Thread Radio Verbindung" --menu "Wie ist dein Thread-Stick verbunden?" 12 68 2 \
-  "1" "Netzwerk Stick (TCP Socket, z.B. SLZB-06)" \
-  "2" "Lokaler USB-Stick (z.B. SkyConnect / Sonoff)" 3>&1 1>&2 2>&3)
+CHOICE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR Setup" --menu "Verbindungsart für den Thread-Stick:" 12 58 2 \
+  "1" "Netzwerk (TCP, z.B. SLZB-06)" \
+  "2" "USB (z.B. SkyConnect)" 3>&1 1>&2 2>&3)
 
 if [ "$CHOICE" == "1" ]; then
-  NETWORK_IP=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "Netzwerk Stick IP" --inputbox "Gib die IP und den Port deines Sticks ein (Format: IP:PORT):" 10 58 "192.168.111.4:6638" 3>&1 1>&2 2>&3)
+  NETWORK_IP=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "Netzwerk Stick" --inputbox "IP & Port (Format IP:PORT):" 10 50 "192.168.111.4:6638" 3>&1 1>&2 2>&3)
   RADIO_URL="spinel+hdlc+socket://${NETWORK_IP}"
 else
-  USB_PATH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "USB Pfad" --inputbox "Gib den Pfad zu deinem USB-Stick an:" 10 58 "/dev/ttyACM0" 3>&1 1>&2 2>&3)
+  USB_PATH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "USB Stick" --inputbox "Pfad zum USB-Gerät:" 10 50 "/dev/ttyACM0" 3>&1 1>&2 2>&3)
   RADIO_URL="spinel+hdlc+uart://${USB_PATH}?baudrate=460800"
 fi
-# ---------------------------------------------
+# ------------------------
 
 variables
 color
@@ -46,25 +46,24 @@ function update_script() {
     header_info
     check_container_storage
     check_container_resources
-    if [[ ! -f /opt/otbr/update.sh ]]; then msg_error "No ${APP} Installation Found!"; exit; fi
-    msg_info "Updating $APP"
+    if [[ ! -f /opt/otbr/update.sh ]]; then msg_error "Keine OTBR Installation gefunden!"; exit; fi
+    msg_info "Update OTBR"
     pct exec "$CTID" -- bash -c "/opt/otbr/update.sh"
-    msg_ok "Updated $APP"
+    msg_ok "OTBR aktualisiert"
     exit
 }
 
 start
 build_container
 
-# Übergebe die Benutzereingabe an den Container
+# Radio URL an den LXC übergeben
 echo "$RADIO_URL" > /etc/pve/lxc/${CTID}-radio.tmp
 pct push $CTID /etc/pve/lxc/${CTID}-radio.tmp /tmp/radio_url.txt
 rm /etc/pve/lxc/${CTID}-radio.tmp
 
 description
 
-msg_ok "Completed Successfully\n"
+msg_ok "Installation erfolgreich\n"
 if [ "$CHOICE" == "2" ]; then
-  echo -e "${INFO}${BGN}  WICHTIG für USB-Nutzer: Vergiss nicht, den Stick durchzureichen! ${CL}"
-  echo -e "${INFO}${BGN}  Füge lxc.mount.entry: ${USB_PATH} dev/ttyACM0 none bind,optional,create=file in die Config ein. ${CL}"
+  echo -e "${INFO}${BGN}  USB-Nutzer: Bitte lxc.mount.entry in die Config eintragen! ${CL}"
 fi
