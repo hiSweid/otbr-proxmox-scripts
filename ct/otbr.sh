@@ -68,6 +68,13 @@ rm -f /etc/pve/lxc/${CTID}-radio.tmp
 description
 
 msg_ok "Installation erfolgreich\n"
+
+# IP Adresse aus dem frischen Container abfragen und im Terminal anzeigen
+IP=$(pct exec $CTID ip a s dev eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
+echo -e "${INFO}${BGN}  Dein OTBR Web-Interface ist erreichbar unter: ${CL}"
+echo -e "${INFO}${BGN}  http://${IP} ${CL}"
+echo -e "\n"
+
 if [ "$CHOICE" == "2" ]; then
-  echo -e "${INFO}${BGN}  USB-Nutzer: Bitte lxc.mount.entry in die Config eintragen! ${CL}"
+  echo -e "${INFO}${BGN}  WICHTIG für USB-Nutzer: Bitte lxc.mount.entry in die Config eintragen! ${CL}"
 fi
