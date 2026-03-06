@@ -1,85 +1,79 @@
 #!/usr/bin/env bash
-source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
+set -euo pipefail
 
-# Copyright (c) 2021-2026 community-scripts ORG
-# Author: hiSweid
-# License: MIT
-# Source: https://openthread.io/
+export DEBIAN_FRONTEND=noninteractive
 
-APP="OTBR"
-var_tags="iot;smarthome;thread"
-var_cpu="2"
-var_ram="1024"
-var_disk="4"
-var_os="debian"
-var_version="12"
-var_unprivileged="0"
-var_hostname="otbr"
-HN="otbr"
+apt-get update
+apt-get install -y \
+  ca-certificates \
+  curl \
+  git \
+  sudo \
+  nano \
+  dbus \
+  avahi-daemon
 
-header_info "$APP"
-variables
-color
-catch_errors
+rm -rf /opt/otbr
+git clone --depth=1 https://github.com/openthread/ot-br-posix /opt/otbr
 
-function update_script() {
-  header_info
-  check_container_storage
-  check_container_resources
-  if [[ ! -f /opt/otbr/update.sh ]]; then
-    msg_error "No ${APP} Installation Found!"
-    exit
-  fi
-  msg_info "Updating $APP"
-  pct exec "$CTID" -- bash /opt/otbr/update.sh
-  msg_ok "Updated $APP"
-  exit
-}
+cd /opt/otbr
+./script/bootstrap
+INFRA_IF_NAME=eth0 WEB_GUI=1 NAT64=1 DNS64=1 ./script/setup
 
-RADIO_URL=""
-USB_PATH="/dev/ttyACM0"
+RADIO_URL="spinel+hdlc+uart:///dev/ttyACM0?baudrate=460800"
+if [[ -s /tmp/radio_url.txt ]]; then
+  RADIO_URL="$(cat /tmp/radio_url.txt)"
+fi
 
-CHOICE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR Setup" --menu "Thread Radio Verbindung:" 12 60 2 \
-  "1" "Netzwerk (TCP, z.B. SLZB-06)" \
-  "2" "USB (z.B. SkyConnect / Sonoff)" 3>&1 1>&2 2>&3)
-
-if [[ "$CHOICE" == "1" ]]; then
-  NETWORK_IP=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR Netzwerk-Radio" --inputbox "IP:PORT" 10 50 "192.168.111.4:6638" 3>&1 1>&2 2>&3)
-  RADIO_URL="spinel+hdlc+socket://${NETWORK_IP}"
+if [[ -f /etc/default/otbr-agent ]]; then
+  cat >/etc/default/otbr-agent <<EOF
+OTBR_AGENT_OPTS="-I wpan0 -B eth0 ${RADIO_URL}"
+EOF
 else
-  USB_PATH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OTBR USB-Radio" --inputbox "USB Pfad" 10 50 "/dev/ttyACM0" 3>&1 1>&2 2>&3)
-  RADIO_URL="spinel+hdlc+uart://${USB_PATH}?baudrate=460800"
+  OTBR_AGENT_BIN="$(command -v otbr-agent || echo /usr/sbin/otbr-agent)"
+  mkdir -p /etc/systemd/system/otbr-agent.service.d
+  cat >/etc/systemd/system/otbr-agent.service.d/override.conf <<EOF
+[Service]
+ExecStart=
+ExecStart=${OTBR_AGENT_BIN} -I wpan0 -B eth0 ${RADIO_URL}
+EOF
 fi
 
-start
-build_container
-description
+systemctl daemon-reload
+systemctl enable --now dbus
+systemctl enable --now avahi-daemon
+systemctl restart otbr-agent || systemctl start otbr-agent
 
-msg_info "Transferring OTBR configuration"
-echo "$RADIO_URL" >/tmp/radio_url.txt
-pct push "$CTID" /tmp/radio_url.txt /tmp/radio_url.txt
-rm -f /tmp/radio_url.txt
-msg_ok "Transferred OTBR configuration"
-
-msg_info "Fetching install script"
-TMP_INSTALL=$(mktemp)
-curl -fsSL https://raw.githubusercontent.com/hiSweid/otbr-proxmox-scripts/main/install/otbr-install.sh -o "$TMP_INSTALL"
-pct push "$CTID" "$TMP_INSTALL" /root/otbr-install.sh
-rm -f "$TMP_INSTALL"
-pct exec "$CTID" -- chmod +x /root/otbr-install.sh
-msg_ok "Fetched install script"
-
-msg_info "Installing OTBR"
-pct exec "$CTID" -- bash /root/otbr-install.sh
-msg_ok "Installed OTBR"
-
-IP=$(pct exec "$CTID" -- bash -lc "hostname -I | awk '{print \$1}'")
-
-msg_ok "Completed Successfully"
-echo -e "${INFO}${YW} OTBR container hostname:${CL} ${BGN}otbr${CL}"
-echo -e "${INFO}${YW} Container IP:${CL} ${BGN}${IP}${CL}"
-
-if [[ "$CHOICE" == "2" ]]; then
-  echo -e "${INFO}${YW} USB passthrough reminder:${CL}"
-  echo -e "${TAB}${BGN}lxc.mount.entry: ${USB_PATH} dev/ttyACM0 none bind,optional,create=file${CL}"
+if systemctl list-unit-files | grep -q '^otbr-web.service'; then
+  systemctl enable --now otbr-web
 fi
+
+cat >/opt/otbr/update.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+if [[ ! -d /opt/otbr/.git ]]; then
+  rm -rf /opt/otbr
+  git clone --depth=1 https://github.com/openthread/ot-br-posix /opt/otbr
+else
+  git -C /opt/otbr fetch --depth=1 origin
+  git -C /opt/otbr reset --hard FETCH_HEAD
+fi
+
+cd /opt/otbr
+./script/bootstrap
+INFRA_IF_NAME=eth0 WEB_GUI=1 NAT64=1 DNS64=1 ./script/setup
+
+systemctl daemon-reload
+systemctl restart otbr-agent
+
+if systemctl list-unit-files | grep -q '^otbr-web.service'; then
+  systemctl enable --now otbr-web
+fi
+EOF
+
+chmod +x /opt/otbr/update.sh
+rm -f /tmp/radio_url.txt /root/otbr-install.sh
+apt-get clean
